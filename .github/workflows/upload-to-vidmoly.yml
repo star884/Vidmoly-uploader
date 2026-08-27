@@ -8,12 +8,12 @@ on:
         required: true
         type: string
       file_name:
-        description: 'Custom filename (Leave blank to auto-detect from URL/Magnet)'
+        description: 'Custom filename (Leave blank to auto-detect)'
         required: false
         type: string
         default: ''
       file_selection:
-        description: 'For magnets: File indices (e.g., "1,3") or pattern (e.g., "*.mkv"). Blank = largest file.'
+        description: 'For magnets: Keyword (e.g., "001", "001.mkv") or indices (e.g., "1,3"). Blank = largest file.'
         required: false
         type: string
         default: ''
