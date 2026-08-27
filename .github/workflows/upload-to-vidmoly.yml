@@ -1,4 +1,4 @@
-name: 1DM-Style VidMoly Uploader
+name: Ultimate VidMoly Uploader
 
 on:
   workflow_dispatch:
@@ -8,12 +8,17 @@ on:
         required: true
         type: string
       file_name:
-        description: 'Custom filename (e.g., movie.mp4). Required for direct URLs.'
+        description: 'Custom filename (Leave blank to auto-detect from URL/Magnet)'
         required: false
         type: string
-        default: 'uploaded_video.mp4'
+        default: ''
+      file_selection:
+        description: 'For magnets: File indices (e.g., "1,3") or pattern (e.g., "*.mkv"). Blank = largest file.'
+        required: false
+        type: string
+        default: ''
       threads:
-        description: 'Number of download threads for HTTP (1 to 16)'
+        description: 'HTTP download threads (1 to 16)'
         required: false
         type: string
         default: '8'
@@ -26,7 +31,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Aria2 & Dependencies
+      - name: Install System Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y aria2
@@ -37,12 +42,13 @@ jobs:
           python-version: '3.10'
 
       - name: Install Python dependencies
-        run: pip install requests cloudscraper
+        run: pip install requests cloudscraper bencodepy
 
       - name: Download, Upload, and Notify
         env:
           VIDEO_URL: ${{ inputs.video_url }}
           FILE_NAME: ${{ inputs.file_name }}
+          FILE_SELECTION: ${{ inputs.file_selection }}
           THREADS: ${{ inputs.threads }}
           VIDMOLY_API_KEY: ${{ secrets.VIDMOLY_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
