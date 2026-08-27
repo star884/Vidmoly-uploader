@@ -25,6 +25,8 @@ USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
 ]
 
+VIDMOLY_DOMAIN = "vidmoly.me"
+
 def get_random_headers():
     return {
         "User-Agent": random.choice(USER_AGENTS),
@@ -73,14 +75,36 @@ def select_files(file_list, selection_str):
         print(f"::notice::No file selection provided. Auto-selecting largest file: {largest['name']}")
         return [largest]
     
+    # 1. Check if it's purely indices (e.g., "1", "1, 3", "2,4,5")
     if re.match(r'^[\d,\s]+$', selection_str):
         indices = [int(i.strip()) for i in selection_str.split(',') if i.strip()]
         selected = [f for f in file_list if f['index'] in indices]
-        if not selected: raise ValueError(f"No files found for indices: {indices}")
+        if not selected: 
+            raise ValueError(f"No files found for indices: {indices}")
         return selected
     
-    selected = [f for f in file_list if fnmatch.fnmatch(f['name'], selection_str)]
-    if not selected: raise ValueError(f"No files matched pattern: {selection_str}")
+    # 2. Smart Keyword Matching (e.g., "001", "001.mkv", "Kiteretsu")
+    # If user doesn't include wildcards, automatically wrap in wildcards for substring matching
+    if '*' not in selection_str and '?' not in selection_str:
+        search_pattern = f"*{selection_str}*"
+    else:
+        search_pattern = selection_str
+        
+    # Case-insensitive matching
+    selected = [f for f in file_list if fnmatch.fnmatch(f['name'].lower(), search_pattern.lower())]
+    
+    if not selected: 
+        available = [f['name'] for f in file_list[:5]]
+        raise ValueError(f"No files matched keyword: '{selection_str}'. First 5 files in torrent: {available}")
+    
+    # If multiple files match (e.g., "001" matches "001" and "0010"), sort by name length 
+    # to prioritize the most exact/shortest match first.
+    selected.sort(key=lambda x: len(x['name']))
+    
+    if len(selected) > 1:
+        print(f"::notice::Multiple files matched '{selection_str}'. Downloading the best match: {selected[0]['name']}")
+        return [selected[0]] # Return only the best, most exact match
+        
     return selected
 
 def download_magnet_with_selection(magnet_url, dest_name, selection_str):
@@ -108,7 +132,7 @@ def download_magnet_with_selection(magnet_url, dest_name, selection_str):
         
         selected_files = select_files(file_list, selection_str)
         selected_indices = [str(f['index']) for f in selected_files]
-        print(f"Selected: {', '.join(f['name'] for f in selected_files)}")
+        print(f"::notice::Selected for download: {', '.join(f['name'] for f in selected_files)}")
         print("::endgroup::")
 
         print("::group::Step 3: Downloading selected files via Aria2c")
@@ -255,10 +279,10 @@ def fast_http_download(url, dest_path, num_threads=8):
 
 # --- DIRECT LINK EXTRACTION ---
 def extract_direct_link(page_url, file_code):
-    embed_url = f"https://vidmoly.net/embed-{file_code}.html" if file_code else page_url
+    embed_url = f"https://{VIDMOLY_DOMAIN}/embed-{file_code}.html" if file_code else page_url
     scraper = cloudscraper.create_scraper()
     try:
-        r = scraper.get(embed_url, headers={"Referer": "https://vidmoly.net/"}, timeout=30)
+        r = scraper.get(embed_url, headers={"Referer": f"https://{VIDMOLY_DOMAIN}/"}, timeout=30)
         patterns = [
             r'file:\s*["\']([^"\']+\.mp4[^"\']*)["\']',
             r'<source[^>]+src=["\']([^"\']+\.mp4[^"\']*)["\']',
@@ -297,12 +321,13 @@ def main():
     print(f"::group::Configuration")
     print(f"Target File: {file_name}")
     print(f"URL: {video_url}")
-    if video_url.startswith("magnet:?"): print(f"Selection: {file_selection or 'Auto (Largest)'}")
+    print(f"VidMoly Domain: {VIDMOLY_DOMAIN}")
+    if video_url.startswith("magnet:?"): print(f"Selection Keyword/Indices: {file_selection or 'Auto (Largest)'}")
     print("::endgroup::")
 
     try:
         if video_url.startswith("magnet:?"):
-            download_method = "Aria2c (Torrent Select)"
+            download_method = "Aria2c (Smart Select)"
             download_magnet_with_selection(video_url, file_name, file_selection)
         else:
             download_method = f"1DM Engine ({num_threads} Threads)"
@@ -324,10 +349,16 @@ def main():
 
     print("::group::Uploading to VidMoly")
     try:
+        upload_url = f"https://{VIDMOLY_DOMAIN}/api/upload/file"
+        
         with open(file_name, 'rb') as f:
-            response = requests.post("https://vidmoly.net/api/upload/file", 
+            response = requests.post(upload_url, 
                                      data={'api_key': api_key}, 
                                      files={'file': (file_name, f, 'video/mp4')}, timeout=600)
+        
+        if response.status_code == 404:
+            raise ValueError(f"404 Not Found. The API endpoint is incorrect. Tried: {upload_url}")
+            
         response.raise_for_status()
         res_data = response.json()
         
