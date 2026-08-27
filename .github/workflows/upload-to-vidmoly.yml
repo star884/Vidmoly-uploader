@@ -1,0 +1,49 @@
+name: 1DM-Style VidMoly Uploader
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'Direct URL (.mp4/.mkv) or Magnet link'
+        required: true
+        type: string
+      file_name:
+        description: 'Custom filename (e.g., movie.mp4). Required for direct URLs.'
+        required: false
+        type: string
+        default: 'uploaded_video.mp4'
+      threads:
+        description: 'Number of download threads for HTTP (1 to 16)'
+        required: false
+        type: string
+        default: '8'
+
+jobs:
+  process-and-upload:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Aria2 & Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y aria2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Python dependencies
+        run: pip install requests cloudscraper
+
+      - name: Download, Upload, and Notify
+        env:
+          VIDEO_URL: ${{ inputs.video_url }}
+          FILE_NAME: ${{ inputs.file_name }}
+          THREADS: ${{ inputs.threads }}
+          VIDMOLY_API_KEY: ${{ secrets.VIDMOLY_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python uploader.py
